@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>rc505 v1</title>
+  
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RC-505 Looper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #222;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            padding: 20px;
+        }
+        #screen {
+            background: black;
+            color: lime;
+            font-size: 18px;
+            padding: 10px;
+            width: 80%;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 2px solid lime;
+            margin-bottom: 10px;
+        }
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #start-stop { background: red; color: white; }
+        #undo, #redo { background: gray; color: white; }
+        #play-all { background: yellow; color: black; }
+        #tap-tempo { background: blue; color: white; }
+        .btn:hover { opacity: 0.8; }
+        #looper {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .track {
+            background: #333;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: 220px;
+        }
+        .controls button {
+            margin: 5px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .controls button:hover { opacity: 0.8; }
+        .rec { background: red; color: white; }
+        .stop { background: gray; color: white; }
+        .play { background: green; color: white; }
+        .clear { background: orange; color: white; }
+    </style>
+</head>
+<body>
+    <div id="screen">🔊 Autorisation micro en cours...</div>
+    
+    <div id="controls">
+        <button id="start-stop" class="btn" onclick="startStop()">⏯ Start/Stop</button>
+        <button id="undo" class="btn" onclick="undo()">↩️ Undo</button>
+        <button id="redo" class="btn" onclick="redo()">↪️ Redo</button>
+        <button id="play-all" class="btn" onclick="playAllTracks()">▶️ Play All</button>
+        <button id="tap-tempo" class="btn" onclick="tapTempo()">⏲ Tap Tempo</button>
+    </div>
+    
+    <div id="looper"></div>
+
+    <script>
+        async function requestMicrophoneAccess() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                document.getElementById('screen').innerText = "🎙 Micro prêt ! Enregistrez votre première boucle.";
+            } catch (err) {
+                document.getElementById('screen').innerText = "❌ Accès au micro refusé !";
+            }
+        }
+        requestMicrophoneAccess();
+
+        class Track {
+            constructor(id) {
+                this.id = id;
+                this.audioChunks = [];
+                this.mediaRecorder = null;
+                this.audio = new Audio();
+                this.history = [];
+                this.createTrackUI();
+            }
+
+            createTrackUI() {
+                const trackDiv = document.createElement('div');
+                trackDiv.classList.add('track');
+                trackDiv.innerHTML = `
+                    <p>Piste ${this.id + 1}</p>
+                    <div class="controls">
+                        <button class="rec" onclick="tracks[${this.id}].startRecording()">🔴 Rec</button>
+                        <button class="stop" onclick="tracks[${this.id}].stopRecording()">⏹ Stop</button>
+                        <button class="play" onclick="tracks[${this.id}].playTrack()">▶️ Play</button>
+                        <button class="clear" onclick="tracks[${this.id}].clearTrack()">🗑 Clear</button>
+                    </div>
+                `;
+                document.getElementById('looper').appendChild(trackDiv);
+            }
+
+            updateScreen(message) {
+                document.getElementById('screen').innerText = message;
+            }
+
+            async startRecording() {
+                if (this.isRecording) return;
+                this.isRecording = true;
+                this.audioChunks = [];
+                this.updateScreen(`🎙 Enregistrement de la piste ${this.id + 1}...`);
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.mediaRecorder = new MediaRecorder(stream);
+                    this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
+                    this.mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                        this.history.push(audioBlob);
+                        this.audio.src = URL.createObjectURL(audioBlob);
+                        this.updateScreen(`✅ Piste ${this.id + 1} enregistrée`);
+                    };
+                    this.mediaRecorder.start();
+                } catch (err) {
+                    alert("Accès au micro refusé ou erreur technique");
+                    this.isRecording = false;
+                }
+            }
+
+            stopRecording() {
+                if (this.mediaRecorder && this.isRecording) {
+                    this.isRecording = false;
+                    this.mediaRecorder.stop();
+                }
+            }
+
+            playTrack() {
+                if (this.audio.src) this.audio.play();
+                this.updateScreen(`▶️ Lecture de la piste ${this.id + 1}`);
+            }
+
+            clearTrack() {
+                if (this.history.length > 0) {
+                    this.history.pop();
+                    if (this.history.length > 0) {
+                        this.audio.src = URL.createObjectURL(this.history[this.history.length - 1]);
+                    } else {
+                        this.audio.src = '';
+                    }
+                }
+                this.updateScreen(`🗑 Piste ${this.id + 1} effacée`);
+            }
+
+            undo() {
+                if (this.history.length > 0) {
+                    this.history.pop();
+                    if (this.history.length > 0) {
+                        this.audio.src = URL.createObjectURL(this.history[this.history.length - 1]);
+                    } else {
+                        this.audio.src = '';
+                    }
+                    this.updateScreen(`↩️ Undo: Annulation du dernier enregistrement`);
+                }
+            }
+
+            redo() {
+                // Redo non implémenté car il nécessiterait un stockage séparé de l'historique effacé.
+                this.updateScreen(`⚠️ Redo non disponible`);
+            }
+        }
+
+        const tracks = Array.from({ length: 5 }, (_, i) => new Track(i));
+
+        function playAllTracks() {
+            let hasAudio = false;
+            tracks.forEach(track => {
+                if (track.audio.src) {
+                    track.audio.play();
+                    hasAudio = true;
+                }
+            });
+            document.getElementById('screen').innerText = hasAudio ? "▶️ Lecture de toutes les pistes..." : "⚠️ Aucune piste enregistrée !";
+        }
+
+        function startStop() {
+            document.getElementById('screen').innerText = "⏯ Start/Stop (à implémenter)";
+        }
+
+        function undo() {
+            tracks.forEach(track => track.undo());
+        }
+
+        function redo() {
+            tracks.forEach(track => track.redo());
+        }
+
+        function tapTempo() {
+            document.getElementById('screen').innerText = "⏲ Tap Tempo (à implémenter)";
+        }
+    </script>
+</body>
+</html>
+<!-- partial -->
+  
+</body>
+</html>
